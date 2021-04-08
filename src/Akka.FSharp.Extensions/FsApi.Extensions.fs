@@ -1,11 +1,25 @@
 namespace Akka.FSharp.Extensions
 
+open System.Threading.Tasks
+open System.Runtime.CompilerServices
+open Akka.FSharp
+
+[<Extension>]
+type ActorMessageExtension =
+    [<Extension>]
+    static member PipeToSelf(mailbox: Actor<'Any>, success: 'Result -> 'a, failure: exn -> 'b) = fun (work: Async<'Result>) ->
+        let work_task = work |> Async.StartAsTask
+        work_task.ContinueWith(fun (t: Task<'Result>) -> 
+            if t.IsCompletedSuccessfully then
+                mailbox.Self <! success(t.Result)
+            else
+                mailbox.Self <! failure(if t.IsCanceled then TaskCanceledException() :> exn else t.Exception :> exn)
+        ) |> ignore
+
 module Actor =
     
-    open System.Threading.Tasks
     open Akka.Actor
     open Akka.Dispatch
-    open Akka.FSharp
     open Akka.FSharp.Linq
 
     [<NoComparison>]
