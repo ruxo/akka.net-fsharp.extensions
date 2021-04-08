@@ -1,20 +1,35 @@
 namespace Akka.FSharp.Extensions
 
+open System.Threading.Tasks
+open System.Runtime.CompilerServices
+open Akka.FSharp
+
+[<Extension>]
+type ActorMessageExtension =
+    [<Extension>]
+    static member PipeToSelf(mailbox: Actor<'Any>, success: 'Result -> 'a, failure: exn -> 'b) = fun (work: Async<'Result>) ->
+        let work_task = work |> Async.StartAsTask
+        work_task.ContinueWith(fun (t: Task<'Result>) -> 
+            if t.IsCompletedSuccessfully then
+                mailbox.Self <! success(t.Result)
+            else
+                mailbox.Self <! failure(if t.IsCanceled then TaskCanceledException() :> exn else t.Exception :> exn)
+        ) |> ignore
+
 module Actor =
     
     open Akka.Actor
-    open Akka.FSharp
+    open Akka.Dispatch
     open Akka.FSharp.Linq
-    open System
-    open Microsoft.FSharp.Reflection
-    open FSharp.Quotations.Evaluator
 
+    [<NoComparison>]
     type LifecycleMessage = 
         | PreStart
         | PostStop
         | PreRestart of cause : exn * message : obj
         | PostRestart of cause : exn
 
+    [<NoComparison>]
     type ActorMessage =
         | Lifecycle of LifecycleMessage
         | Message of obj
@@ -28,7 +43,7 @@ module Actor =
             | :? System.InvalidCastException -> None 
         | _ -> None
 
-    type FunActorExt<'Message, 'Returned>(actor : Actor<'Message> -> Cont<'Message, 'Returned>) as this =
+    type FunActorExt<'Message, 'Returned>(actor : Actor<'Message> -> Cont<'Message, 'Returned>) =
         inherit FunActor<'Message, 'Returned>(actor)
 
         let mutable postStopWasHandled = false
@@ -62,7 +77,7 @@ module Actor =
 
     and ExpressionExt = 
         static member ToExpression(f : System.Linq.Expressions.Expression<System.Func<FunActorExt<'Message, 'v>>>) = f
-        static member ToExpression<'Actor>(f : Quotations.Expr<(unit -> 'Actor)>) = toExpression<'Actor> (QuotationEvaluator.ToLinqExpression f)
+        static member ToExpression<'Actor>(f : Quotations.Expr<(unit -> 'Actor)>) = toBCLExpression<'Actor> f
 
     /// <summary>
     /// Spawns an actor using specified actor computation expression, with custom spawn option settings.
@@ -115,10 +130,13 @@ module Actor =
     /// <summary>
     /// Returns a continuation stopping the message handling pipeline.
     /// </summary>
-    let empty : Cont<'Message, 'Returned> = Return ()
+    let empty : Cont<'Message, unit> = Return ()
 
     /// <summary>
     /// Returns a continuation causing actor to switch its behavior.
     /// </summary>
     /// <param name="next">New receive function.</param>
     let inline become (next) : Cont<'Message, 'Returned> = Func(next)
+
+    let inline runAsync (work: Async<unit>) =
+        ActorTaskScheduler.RunTask(fun () -> work |> Async.StartImmediateAsTask :> Task)
