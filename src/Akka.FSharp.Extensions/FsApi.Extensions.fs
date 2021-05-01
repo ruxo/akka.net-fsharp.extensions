@@ -1,8 +1,11 @@
+// Work with Akka 1.4.9
+
 namespace Akka.FSharp.Extensions
 
 open System.Threading.Tasks
 open System.Runtime.CompilerServices
 open Akka.FSharp
+open Akka.Actor
 
 [<Extension>]
 type ActorMessageExtension =
@@ -16,8 +19,12 @@ type ActorMessageExtension =
                 mailbox.Self <! failure(if t.IsCanceled then TaskCanceledException() :> exn else t.Exception :> exn)
         ) |> ignore
 
+[<AutoOpen>]
+module FsExtension =
+    let inline spawnFrom<'a when 'a :> ActorBase> (system: ActorSystem) name (class_params: obj[]) =
+        system.ActorOf(Props.Create<'a>(class_params), name)
+
 module Actor =
-    
     open Akka.Actor
     open Akka.Dispatch
     open Akka.FSharp.Linq
@@ -107,11 +114,12 @@ module Actor =
     /// Wraps provided function with actor behavior. 
     /// It will be invoked each time, an actor will receive a message. 
     /// </summary>
-    let actorOf (fn : 'Message -> Cont<'Message, 'Returned>) (mailbox : Actor<'Message>) : Cont<'Message, 'Returned> = 
+    let actorOf (fn : 'Message -> unit) (mailbox : Actor<'Message>) : Cont<'Message, 'Returned> = 
         let rec loop() = 
             actor { 
                 let! msg = mailbox.Receive()
-                return! fn msg 
+                fn msg
+                return! loop() 
             }
         loop()
 
@@ -119,11 +127,12 @@ module Actor =
     /// Wraps provided function with actor behavior. 
     /// It will be invoked each time, an actor will receive a message. 
     /// </summary>
-    let actorOf2 (fn : Actor<'Message> -> 'Message -> Cont<'Message, 'Returned>) (mailbox : Actor<'Message>) : Cont<'Message, 'Returned> = 
+    let actorOf2 (fn : Actor<'Message> -> 'Message -> unit) (mailbox : Actor<'Message>) : Cont<'Message, 'Returned> = 
         let rec loop() = 
             actor {
                 let! msg = mailbox.Receive()
-                return! fn mailbox msg
+                fn mailbox msg
+                return! loop()
             }
         loop()
 

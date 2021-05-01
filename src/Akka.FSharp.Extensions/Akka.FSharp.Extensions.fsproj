@@ -16,6 +16,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="FsReceiveActor.fs" />
     <Compile Include="FsApi.Extensions.fs" />
     <DotNetCliToolReference Include="dotnet-fake" Version="5.*" />
   </ItemGroup>
