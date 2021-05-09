@@ -1,11 +1,11 @@
-// Work with Akka 1.4.9
-
 namespace Akka.FSharp.Extensions
 
 open System.Threading.Tasks
 open System.Runtime.CompilerServices
-open Akka.FSharp
 open Akka.Actor
+open Akka.Dispatch
+open Akka.FSharp
+open Akka.FSharp.Linq
 
 [<Extension>]
 type ActorMessageExtension =
@@ -19,16 +19,7 @@ type ActorMessageExtension =
                 mailbox.Self <! failure(if t.IsCanceled then TaskCanceledException() :> exn else t.Exception :> exn)
         ) |> ignore
 
-[<AutoOpen>]
-module FsExtension =
-    let inline spawnFrom<'a when 'a :> ActorBase> (system: ActorSystem) name (class_params: obj[]) =
-        system.ActorOf(Props.Create<'a>(class_params), name)
-
-module Actor =
-    open Akka.Actor
-    open Akka.Dispatch
-    open Akka.FSharp.Linq
-
+module ActorExt =
     [<NoComparison>]
     type LifecycleMessage = 
         | PreStart
@@ -147,5 +138,6 @@ module Actor =
     /// <param name="next">New receive function.</param>
     let inline become (next) : Cont<'Message, 'Returned> = Func(next)
 
+module Actor =
     let inline runAsync (work: Async<unit>) =
         ActorTaskScheduler.RunTask(fun () -> work |> Async.StartImmediateAsTask :> Task)
